@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini Photoshop Web</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">FastAPI + Web Frontend</p>
+      <h1>Mini Photoshop Web</h1>
+    </div>
+    <div class="toolbar">
+      <label class="file-button">
+        <input id="fileInput" type="file" accept="image/*" />
+        Load Image
+      </label>
+      <button id="saveBtn" type="button">Save</button>
+      <button id="undoBtn" type="button">Undo</button>
+      <button id="redoBtn" type="button">Redo</button>
+      <button id="resetBtn" type="button">Reset</button>
+      <button id="histBtn" type="button">Histogram</button>
+      <button id="cnnBtn" type="button">CNN</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar">
+      <div class="panel-heading">
+        <h2>Fitur</h2>
+        <p>Pilih operasi citra.</p>
+      </div>
+      <div id="featureList" class="feature-list"></div>
+    </aside>
+
+    <section class="preview-panel">
+      <div class="preview-options">
+        <label><input id="showOriginalBefore" type="checkbox" checked /> Before = original</label>
+        <span id="imageInfo">Belum ada gambar.</span>
+      </div>
+      <div class="preview-grid">
+        <article class="image-card">
+          <div class="card-title">Before</div>
+          <div class="image-stage"><img id="beforeImage" alt="Before preview" /></div>
+        </article>
+        <article class="image-card">
+          <div class="card-title">After / Live Result</div>
+          <div id="afterStage" class="image-stage crop-stage">
+            <img id="afterImage" alt="After preview" />
+            <div id="cropBox" class="crop-box hidden"></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <aside class="controls-panel">
+      <div class="panel-heading">
+        <h2 id="featureTitle">Pilih fitur</h2>
+        <p id="featureDesc">Load gambar untuk mulai.</p>
+      </div>
+
+      <div class="control-row two-cols">
+        <label>
+          Preset
+          <select id="presetSelect"><option>Manual</option></select>
+        </label>
+        <label>
+          Interpolasi
+          <select id="interpolationSelect">
+            <option value="bilinear">bilinear</option>
+            <option value="nearest">nearest</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="check-row"><input id="livePreview" type="checkbox" checked /> Live Preview</label>
+      <div id="controlsContainer" class="controls-container"></div>
+
+      <div class="actions-grid">
+        <button id="previewBtn" type="button">Preview</button>
+        <button id="applyBtn" type="button">Apply</button>
+        <button id="cancelBtn" type="button">Cancel</button>
+        <button id="resetParamBtn" type="button">Reset Param</button>
+        <button id="cropBtn" type="button">Crop Area</button>
+      </div>
+
+      <div class="save-box">
+        <label>
+          Format Save
+          <select id="saveFormat">
+            <option value="PNG">PNG</option>
+            <option value="JPEG">JPEG</option>
+            <option value="BMP">BMP</option>
+            <option value="TIFF">TIFF</option>
+          </select>
+        </label>
+        <label>
+          JPEG Quality
+          <input id="jpegQuality" type="number" min="1" max="100" value="90" />
+        </label>
+      </div>
+
+      <div class="save-box">
+        <label>
+          CNN Model
+          <select id="cnnModel"></select>
+        </label>
+        <label>
+          Top K
+          <input id="cnnTopK" type="number" min="1" max="10" value="5" />
+        </label>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="statusText">Backend siap. Buka gambar untuk mulai mengedit.</span>
+  </footer>
+
+  <dialog id="histDialog" class="modal">
+    <div class="modal-head">
+      <h2>Histogram Before vs After</h2>
+      <button id="closeHist" type="button">Tutup</button>
+    </div>
+    <canvas id="histCanvas" width="980" height="520"></canvas>
+  </dialog>
+
+  <dialog id="cnnDialog" class="modal small-modal">
+    <div class="modal-head">
+      <h2>CNN Object Recognition</h2>
+      <button id="closeCnn" type="button">Tutup</button>
+    </div>
+    <div id="cnnOutput" class="cnn-output"></div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

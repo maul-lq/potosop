@@ -40,6 +40,11 @@ uvicorn backend.main:app --reload
 - `POST /api/histogram` - mengambil histogram grayscale/RGB.
 - `POST /api/cnn` - klasifikasi CNN opsional jika TensorFlow terinstal.
 
+Kategori **Compression** menyediakan simulasi JPEG dan kuantisasi warna, serta
+laporan rasio lossless Huffman, arithmetic coding, LZW, dan RLE. Metode
+lossless mempertahankan preview gambar dan dapat dikustomisasi melalui sumber
+data RGB/grayscale serta opsi khusus algoritmanya.
+
 ## Catatan CNN
 
 CNN tetap opsional seperti proyek asli. Untuk mengaktifkannya:

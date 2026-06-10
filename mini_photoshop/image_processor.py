@@ -8,6 +8,8 @@ operations can be tested without a graphical display.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import heapq
+import math
 from typing import Iterable, Literal, Tuple
 
 import cv2
@@ -15,6 +17,7 @@ import numpy as np
 
 InterpolationName = Literal["nearest", "bilinear"]
 HistogramChannel = Literal["all", "gray", "R", "G", "B"]
+CompressionDataMode = Literal["RGB", "Grayscale"]
 
 
 @dataclass
@@ -342,20 +345,151 @@ def quantize_colors(image: np.ndarray, levels: int = 4) -> np.ndarray:
     return ((image // step) * step + step // 2).clip(0, 255).astype(np.uint8)
 
 
-def rle_compression_ratio(image: np.ndarray) -> float:
-    """Estimate RLE ratio on flattened grayscale values.
+@dataclass(frozen=True)
+class CompressionStats:
+    method: str
+    mode: CompressionDataMode
+    original_bits: int
+    compressed_bits: int
+    metadata_bits: int = 0
 
-    Returns original_size / rle_size. Values > 1 mean compression is beneficial.
-    RLE size is estimated as two bytes per run: value + run length token.
+    @property
+    def total_bits(self) -> int:
+        return self.compressed_bits + self.metadata_bits
+
+    @property
+    def ratio(self) -> float:
+        return self.original_bits / max(1, self.total_bits)
+
+    @property
+    def saving_percent(self) -> float:
+        return (1.0 - (self.total_bits / max(1, self.original_bits))) * 100.0
+
+
+def compression_data(image: np.ndarray, mode: CompressionDataMode = "RGB") -> np.ndarray:
+    """Return the byte stream used by lossless compression simulations."""
+
+    if mode == "Grayscale":
+        return np.ascontiguousarray(to_gray(image), dtype=np.uint8).reshape(-1)
+    if mode != "RGB":
+        raise ValueError("Mode data harus RGB atau Grayscale.")
+    rgb = image[:, :, :3] if image.ndim == 3 and image.shape[2] >= 3 else gray_to_rgb(image)
+    return np.ascontiguousarray(rgb, dtype=np.uint8).reshape(-1)
+
+
+def huffman_compression_stats(
+    image: np.ndarray,
+    mode: CompressionDataMode = "RGB",
+    include_metadata: bool = True,
+) -> CompressionStats:
+    data = compression_data(image, mode)
+    counts = np.bincount(data, minlength=256)
+    heap = [int(count) for count in counts if count]
+    heapq.heapify(heap)
+    if len(heap) == 1:
+        payload_bits = int(data.size)
+    else:
+        payload_bits = 0
+        while len(heap) > 1:
+            left = heapq.heappop(heap)
+            right = heapq.heappop(heap)
+            merged = left + right
+            payload_bits += merged
+            heapq.heappush(heap, merged)
+    metadata_bits = int(np.count_nonzero(counts)) * 40 if include_metadata else 0
+    return CompressionStats("Huffman", mode, int(data.size * 8), payload_bits, metadata_bits)
+
+
+def arithmetic_compression_stats(
+    image: np.ndarray,
+    mode: CompressionDataMode = "RGB",
+    include_metadata: bool = True,
+) -> CompressionStats:
+    """Return the ideal static arithmetic-coding payload size.
+
+    The payload is the information content for the observed static model,
+    rounded up to whole bits. Optional metadata stores each symbol and count.
     """
 
-    gray = to_gray(image).flatten()
-    if gray.size == 0:
-        return 1.0
-    runs = 1 + np.count_nonzero(gray[1:] != gray[:-1])
-    original_size = gray.size
-    rle_size = max(1, runs * 2)
-    return float(original_size / rle_size)
+    data = compression_data(image, mode)
+    counts = np.bincount(data, minlength=256)
+    used = counts[counts > 0].astype(np.float64)
+    if data.size:
+        probabilities = used / float(data.size)
+        payload_bits = int(math.ceil(float(np.sum(used * -np.log2(probabilities)))))
+    else:
+        payload_bits = 0
+    metadata_bits = int(used.size) * 40 if include_metadata else 0
+    return CompressionStats("Aritmatik", mode, int(data.size * 8), payload_bits, metadata_bits)
+
+
+def lzw_compression_stats(
+    image: np.ndarray,
+    mode: CompressionDataMode = "RGB",
+    max_dictionary_bits: int = 12,
+) -> CompressionStats:
+    data = compression_data(image, mode)
+    max_dictionary_bits = int(np.clip(max_dictionary_bits, 9, 16))
+    if not data.size:
+        return CompressionStats("LZW", mode, 0, 0)
+
+    dictionary: dict[tuple[int, int], int] = {}
+    next_code = 256
+    code_width = 9
+    payload_bits = 0
+    prefix = int(data[0])
+    for raw_symbol in data[1:]:
+        symbol = int(raw_symbol)
+        pair = (prefix, symbol)
+        known_code = dictionary.get(pair)
+        if known_code is not None:
+            prefix = known_code
+            continue
+
+        payload_bits += code_width
+        if next_code < (1 << max_dictionary_bits):
+            dictionary[pair] = next_code
+            next_code += 1
+            if next_code >= (1 << code_width) and code_width < max_dictionary_bits:
+                code_width += 1
+        else:
+            dictionary.clear()
+            next_code = 256
+            code_width = 9
+        prefix = symbol
+    payload_bits += code_width
+    return CompressionStats("LZW", mode, int(data.size * 8), payload_bits)
+
+
+def rle_compression_stats(
+    image: np.ndarray,
+    mode: CompressionDataMode = "RGB",
+    max_run_length: int = 255,
+) -> CompressionStats:
+    data = compression_data(image, mode)
+    max_run_length = int(np.clip(max_run_length, 2, 65535))
+    count_bits = int(math.ceil(math.log2(max_run_length + 1)))
+    if not data.size:
+        return CompressionStats("RLE", mode, 0, 0)
+
+    runs = 1
+    current_length = 1
+    previous = int(data[0])
+    for raw_value in data[1:]:
+        value = int(raw_value)
+        if value == previous and current_length < max_run_length:
+            current_length += 1
+        else:
+            runs += 1
+            previous = value
+            current_length = 1
+    return CompressionStats("RLE", mode, int(data.size * 8), runs * (8 + count_bits))
+
+
+def rle_compression_ratio(image: np.ndarray) -> float:
+    """Backward-compatible grayscale RLE ratio using 8-bit run lengths."""
+
+    return rle_compression_stats(image, "Grayscale", 255).ratio
 
 
 def _has_gray_rgb_channels(image: np.ndarray) -> bool:

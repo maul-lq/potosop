@@ -287,13 +287,56 @@ FEATURES: list[Feature] = [
     ),
     _feature(
         "quantization",
-        "Color Quantization",
+        "Metode Kuantisasi Warna",
         "Compression",
-        "Simulasi kuantisasi warna untuk kompresi citra.",
+        "Kompresi lossy dengan mengurangi jumlah level warna per channel.",
         [_control("levels", "Levels", default=8, minimum=2, maximum=32)],
         presets={"Ringan": {"levels": 16}, "Sedang": {"levels": 8}, "Kuat": {"levels": 4}},
     ),
-    _feature("rle_ratio", "RLE Compression Ratio", "Compression", "Hitung estimasi rasio kompresi RLE pada citra grayscale.", live=True),
+    _feature(
+        "huffman_compression",
+        "Kompresi Huffman",
+        "Compression",
+        "Hitung rasio lossless Huffman. Preview gambar tetap identik.",
+        [
+            _control("mode", "Sumber Data", kind="combo", default="RGB", options=["RGB", "Grayscale"]),
+            _control("include_metadata", "Hitung overhead tabel frekuensi", kind="check", default=True),
+        ],
+        live=False,
+    ),
+    _feature(
+        "arithmetic_compression",
+        "Kompresi Aritmatik",
+        "Compression",
+        "Hitung rasio ideal static arithmetic coding. Preview gambar tetap identik.",
+        [
+            _control("mode", "Sumber Data", kind="combo", default="RGB", options=["RGB", "Grayscale"]),
+            _control("include_metadata", "Hitung overhead model probabilitas", kind="check", default=True),
+        ],
+        live=False,
+    ),
+    _feature(
+        "lzw_compression",
+        "Kompresi LZW",
+        "Compression",
+        "Hitung rasio lossless LZW dengan batas kamus yang dapat dikustomisasi.",
+        [
+            _control("mode", "Sumber Data", kind="combo", default="RGB", options=["RGB", "Grayscale"]),
+            _control("max_dictionary_bits", "Maksimum Bit Kamus", default=12, minimum=9, maximum=16),
+        ],
+        live=False,
+    ),
+    _feature(
+        "rle_compression",
+        "Kompresi RLE",
+        "Compression",
+        "Hitung rasio lossless RLE dengan panjang run yang dapat dikustomisasi.",
+        [
+            _control("mode", "Sumber Data", kind="combo", default="Grayscale", options=["RGB", "Grayscale"]),
+            _control("max_run_length", "Maksimum Panjang Run", default=255, minimum=2, maximum=65535),
+        ],
+        live=False,
+    ),
     _feature("cnn_recognition", "CNN Object Recognition", "Machine Learning", "Klasifikasi objek opsional memakai model CNN ImageNet.", live=False),
 ]
 
@@ -356,9 +399,45 @@ def _process_crop(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray
     return result, f"Crop selesai: {result.shape[1]} x {result.shape[0]} px."
 
 
-def _process_rle_ratio(image: np.ndarray, _params: dict[str, Any]) -> tuple[np.ndarray, str]:
-    ratio = ip.rle_compression_ratio(image)
-    return image.copy(), f"Estimasi RLE: rasio original/RLE = {ratio:.3f}. Nilai > 1 berarti kompresi menguntungkan."
+def _compression_mode(params: dict[str, Any]) -> ip.CompressionDataMode:
+    return "Grayscale" if params.get("mode") == "Grayscale" else "RGB"
+
+
+def _compression_result(image: np.ndarray, stats: ip.CompressionStats) -> tuple[np.ndarray, str]:
+    original_bytes = stats.original_bits / 8
+    compressed_bytes = stats.total_bits / 8
+    message = (
+        f"{stats.method} ({stats.mode}): {original_bytes:,.0f} byte -> "
+        f"{compressed_bytes:,.1f} byte | rasio {stats.ratio:.3f}x | "
+        f"penghematan {stats.saving_percent:.2f}%."
+    )
+    return image.copy(), message
+
+
+def _process_huffman(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray, str]:
+    stats = ip.huffman_compression_stats(image, _compression_mode(params), _as_bool(params, "include_metadata", True))
+    return _compression_result(image, stats)
+
+
+def _process_arithmetic(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray, str]:
+    stats = ip.arithmetic_compression_stats(image, _compression_mode(params), _as_bool(params, "include_metadata", True))
+    return _compression_result(image, stats)
+
+
+def _process_lzw(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray, str]:
+    stats = ip.lzw_compression_stats(image, _compression_mode(params), _as_int(params, "max_dictionary_bits", 12))
+    return _compression_result(image, stats)
+
+
+def _process_rle(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray, str]:
+    stats = ip.rle_compression_stats(image, _compression_mode(params), _as_int(params, "max_run_length", 255))
+    return _compression_result(image, stats)
+
+
+def _process_quantization(image: np.ndarray, params: dict[str, Any]) -> tuple[np.ndarray, str]:
+    levels = _as_int(params, "levels", 8)
+    result = ip.quantize_colors(image, levels)
+    return result, f"Kuantisasi warna selesai dengan {int(np.clip(levels, 2, 32))} level per channel."
 
 
 def _process_cnn_noop(image: np.ndarray, _params: dict[str, Any]) -> tuple[np.ndarray, str]:
@@ -387,8 +466,11 @@ PROCESSORS: dict[str, Processor] = {
     "edge_segmentation": lambda img, _p: (ip.edge_based_segmentation(img), "Edge-based segmentation selesai."),
     "region_segmentation": lambda img, p: (ip.region_based_segmentation(img, _as_int(p, "k", 3)), "Region-based segmentation selesai."),
     "jpeg_simulation": lambda img, p: (ip.simulate_jpeg(img, _as_int(p, "quality", 75)), "Simulasi JPEG selesai."),
-    "quantization": lambda img, p: (ip.quantize_colors(img, _as_int(p, "levels", 8)), "Color quantization selesai."),
-    "rle_ratio": _process_rle_ratio,
+    "quantization": _process_quantization,
+    "huffman_compression": _process_huffman,
+    "arithmetic_compression": _process_arithmetic,
+    "lzw_compression": _process_lzw,
+    "rle_compression": _process_rle,
     "cnn_recognition": _process_cnn_noop,
     "crop": _process_crop,
 }

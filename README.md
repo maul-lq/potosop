@@ -31,7 +31,7 @@ Aplikasi desktop pengolahan citra digital berbasis **Python + Tkinter**. Versi i
 - Binary & Edge: threshold, Canny, Sobel, Prewitt, Robert, Laplacian, LoG, erosion, dilation.
 - Color: RGB channel splitting, hue/saturation adjustment.
 - Segmentation: threshold segmentation, edge-based segmentation, region-based K-Means.
-- Compression: JPEG quality simulation, color quantization, RLE ratio estimation.
+- Compression: JPEG quality simulation, color quantization, serta rasio Huffman, arithmetic coding, LZW, dan RLE dengan parameter kustom.
 - Histogram Analysis: histogram before-after dengan deteksi channel otomatis: gambar RGB menampilkan R/G/B, gambar grayscale hanya menampilkan gray, lengkap dengan filter channel; saat fitur Channel Splitting RGB aktif, grafik otomatis mengikuti channel yang dipilih. Sekarang dilengkapi informasi **total piksel** dan label sumbu Y yang jelas.
 - Machine Learning: CNN object recognition opsional memakai MobileNetV2.
 

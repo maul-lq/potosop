@@ -24,6 +24,12 @@ const beforeImage = el('beforeImage');
 const afterImage = el('afterImage');
 const cropBox = el('cropBox');
 const afterStage = el('afterStage');
+const compressionReportFeatures = new Set([
+  'huffman_compression',
+  'arithmetic_compression',
+  'lzw_compression',
+  'rle_compression',
+]);
 let debounceTimer = null;
 
 function setStatus(message) {
@@ -275,9 +281,7 @@ async function processSelected(commit) {
     state.previewFeature = state.selectedFeature.key;
     updateImages();
     setStatus(message);
-    if (state.selectedFeature.key === 'rle_ratio') {
-      const msgEl = el('emptyControlsMsg');
-      if (msgEl) msgEl.innerHTML = `<span style="color:var(--accent);font-weight:bold;font-size:1.1rem;">${message}</span>`;
+    if (compressionReportFeatures.has(state.selectedFeature.key)) {
       el('featureDesc').innerHTML = `<span style="color:var(--accent);font-weight:bold;">${message}</span>`;
       if (!commit) alert(message);
     }
